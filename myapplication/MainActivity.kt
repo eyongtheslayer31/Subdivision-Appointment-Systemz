@@ -619,7 +619,7 @@ fun Reservation() {
 
 @Composable
 fun Reservations() {
-    ScreenContent("Reservations")
+    UserReservationsScreen()
 }
 
 @Composable

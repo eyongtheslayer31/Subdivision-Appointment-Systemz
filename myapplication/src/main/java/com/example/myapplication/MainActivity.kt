@@ -31,8 +31,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -40,6 +43,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +55,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDrawerState
@@ -77,13 +83,70 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 
-// Color palettes
+// ============================================================================
+// COLOR PALETTE
+// ============================================================================
 val DarkBlueGray = Color(0xFF5A5C71)
 val LightLavender = Color(0xFFD8DBFA)
 val DeepNavy = Color(0xFF34394E)
 val MediumGray = Color(0xFF878DA5)
 
-// Sample events data
+// ============================================================================
+// DATA MODELS
+// ============================================================================
+
+// Community Event Models
+data class CommunityEvent(
+    val id: Int,
+    val title: String,
+    val timeRange: String,
+    val description: String,
+    val schedules: List<EventSchedule>
+)
+
+data class EventSchedule(
+    val date: String,
+    val time: String,
+    val venue: String
+)
+
+// Reservation Models
+data class Reservation(
+    val id: String,
+    val name: String,
+    val icon: ImageVector,
+    val date: String,
+    val time: String,
+    val amount: String,
+    val purpose: String,
+    val status: ReservationStatus,
+    val rejectionReason: String? = null
+)
+
+enum class ReservationStatus(val displayName: String, val color: Color) {
+    PENDING("Pending", Color(0xFFFFA726)),
+    ACTIVE("Active", Color(0xFF42A5F5)),
+    COMPLETED("Completed", Color(0xFF66BB6A)),
+    REJECTED("Rejected", Color(0xFFEF5350))
+}
+
+// User Models
+data class User(
+    val username: String,
+    val password: String,
+    val name: String,
+    val role: String,
+    val email: String,
+    val contactNum: String,
+    val address: String
+)
+
+
+
+// ============================================================================
+// SAMPLE DATA
+// ============================================================================
+
 val sampleEvents = listOf(
     CommunityEvent(
         id = 1,
@@ -144,6 +207,54 @@ val sampleEvents = listOf(
     )
 )
 
+val sampleReservations = listOf(
+    Reservation(
+        id = "RSV-2026-001",
+        name = "Chapel",
+        icon = Icons.Default.Place,
+        date = "January 15, 2026",
+        time = "9:00 AM - 12:00 PM",
+        amount = "₱2500.00",
+        purpose = "Wedding Ceremony",
+        status = ReservationStatus.ACTIVE
+    ),
+    Reservation(
+        id = "RSV-2026-002",
+        name = "Basketball Court",
+        icon = Icons.Default.Star,
+        date = "January 12, 2026",
+        time = "3:00 PM - 6:00 PM",
+        amount = "₱1200.00",
+        purpose = "Basketball Practice",
+        status = ReservationStatus.PENDING
+    ),
+    Reservation(
+        id = "RSV-2026-003",
+        name = "Multipurpose Hall",
+        icon = Icons.Default.Home,
+        date = "December 25, 2025",
+        time = "6:00 PM - 10:00 PM",
+        amount = "₱3500.00",
+        purpose = "Christmas Party",
+        status = ReservationStatus.COMPLETED
+    ),
+    Reservation(
+        id = "RSV-2026-004",
+        name = "Tennis Court",
+        icon = Icons.Default.AccountCircle,
+        date = "January 8, 2026",
+        time = "7:00 AM - 9:00 AM",
+        amount = "₱1500.00",
+        purpose = "Tennis Tournament",
+        status = ReservationStatus.REJECTED,
+        rejectionReason = "Facility already booked for maintenance on selected date"
+    )
+)
+
+// ============================================================================
+// MAIN ACTIVITY
+// ============================================================================
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -161,7 +272,7 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 var currentUser by remember { mutableStateOf<User?>(null) }
-                
+
                 if (currentUser == null) {
                     LoginScreen(onLoginSuccess = { user -> currentUser = user })
                 } else {
@@ -171,6 +282,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+// ============================================================================
+// LOGIN SCREEN
+// ============================================================================
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -204,9 +319,9 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
                     fontWeight = FontWeight.Bold,
                     color = DeepNavy
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text(
                     text = "Login to your account",
                     fontSize = 14.sp,
@@ -289,6 +404,10 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
     }
 }
 
+// ============================================================================
+// MAIN APP WITH NAVIGATION
+// ============================================================================
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSidebarApp(user: User, onLogout: () -> Unit) {
@@ -350,7 +469,7 @@ fun ProfileSidebarApp(user: User, onLogout: () -> Unit) {
                 ) {
                     composable("home") { HomeScreen() }
                     composable("reservation") { Reservation() }
-                    composable("reservations") { Reservations() }
+                    composable("reservations") { ReservationsScreen() }
                     composable("balance") { Balance() }
                     composable("account") { Account(user) }
                 }
@@ -358,6 +477,10 @@ fun ProfileSidebarApp(user: User, onLogout: () -> Unit) {
         }
     )
 }
+
+// ============================================================================
+// DRAWER NAVIGATION
+// ============================================================================
 
 @Composable
 fun ProfileDrawerContent(user: User, onNavigate: (String) -> Unit) {
@@ -401,7 +524,7 @@ fun ProfileDrawerContent(user: User, onNavigate: (String) -> Unit) {
             )
 
             Spacer(modifier = Modifier.weight(1f))
-            
+
             DrawerMenuItem(
                 icon = Icons.Default.Close,
                 title = "Logout",
@@ -465,6 +588,10 @@ fun DrawerMenuItem(
         )
     }
 }
+
+// ============================================================================
+// HOME SCREEN
+// ============================================================================
 
 @Composable
 fun HomeScreen() {
@@ -739,20 +866,390 @@ fun ScheduleItem(schedule: EventSchedule) {
     }
 }
 
+// ============================================================================
+// RESERVATIONS SCREEN - NEW IMPLEMENTATION
+// ============================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ReservationsScreen() {
+    var selectedFilter by remember { mutableStateOf("All") }
+
+    val reservations = remember { sampleReservations }
+
+    val filteredReservations = when (selectedFilter) {
+        "All" -> reservations
+        else -> reservations.filter { it.status.displayName == selectedFilter }
+    }
+
+    val statusCounts = ReservationStatus.values().associateWith { status ->
+        reservations.count { it.status == status }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LightLavender)
+    ) {
+        // Header
+        item {
+            Column(
+                modifier = Modifier.padding(20.dp)
+            ) {
+                Text(
+                    text = "My Reservations",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DeepNavy
+                )
+            }
+        }
+
+        // Status Summary Cards
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StatusCard(
+                    count = statusCounts[ReservationStatus.PENDING] ?: 0,
+                    status = ReservationStatus.PENDING,
+                    modifier = Modifier.weight(1f)
+                )
+                StatusCard(
+                    count = statusCounts[ReservationStatus.ACTIVE] ?: 0,
+                    status = ReservationStatus.ACTIVE,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StatusCard(
+                    count = statusCounts[ReservationStatus.COMPLETED] ?: 0,
+                    status = ReservationStatus.COMPLETED,
+                    modifier = Modifier.weight(1f)
+                )
+                StatusCard(
+                    count = statusCounts[ReservationStatus.REJECTED] ?: 0,
+                    status = ReservationStatus.REJECTED,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // Filter Chips
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ReservationFilterChip(
+                    label = "All",
+                    selected = selectedFilter == "All",
+                    onClick = { selectedFilter = "All" }
+                )
+                ReservationFilterChip(
+                    label = "Pending",
+                    selected = selectedFilter == "Pending",
+                    onClick = { selectedFilter = "Pending" }
+                )
+                ReservationFilterChip(
+                    label = "Active",
+                    selected = selectedFilter == "Active",
+                    onClick = { selectedFilter = "Active" }
+                )
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ReservationFilterChip(
+                    label = "Completed",
+                    selected = selectedFilter == "Completed",
+                    onClick = { selectedFilter = "Completed" }
+                )
+                ReservationFilterChip(
+                    label = "Rejected",
+                    selected = selectedFilter == "Rejected",
+                    onClick = { selectedFilter = "Rejected" }
+                )
+            }
+        }
+
+        // Reservation Cards
+        items(filteredReservations) { reservation ->
+            ReservationCard(
+                reservation = reservation,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun StatusCard(count: Int, status: ReservationStatus, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(status.color.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = count.toString(),
+                    color = status.color,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = status.displayName,
+                fontSize = 14.sp,
+                color = MediumGray
+            )
+        }
+    }
+}
+
+@Composable
+fun ReservationFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = when (label) {
+                "Pending" -> Color(0xFFFFA726).copy(alpha = 0.2f)
+                "Active" -> Color(0xFF42A5F5).copy(alpha = 0.2f)
+                "Completed" -> Color(0xFF66BB6A).copy(alpha = 0.2f)
+                "Rejected" -> Color(0xFFEF5350).copy(alpha = 0.2f)
+                else -> LightLavender
+            },
+            selectedLabelColor = when (label) {
+                "Pending" -> Color(0xFFFFA726)
+                "Active" -> Color(0xFF42A5F5)
+                "Completed" -> Color(0xFF66BB6A)
+                "Rejected" -> Color(0xFFEF5350)
+                else -> DeepNavy
+            },
+            containerColor = Color.White,
+            labelColor = DeepNavy
+        )
+    )
+}
+
+@Composable
+fun ReservationCard(reservation: Reservation, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(LightLavender),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = reservation.icon,
+                            contentDescription = null,
+                            tint = DarkBlueGray
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = reservation.name,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = DeepNavy
+                        )
+                        Text(
+                            text = "ID: ${reservation.id}",
+                            fontSize = 12.sp,
+                            color = MediumGray
+                        )
+                    }
+                }
+
+                Surface(
+                    color = reservation.status.color.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = reservation.status.displayName,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        color = reservation.status.color,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Details
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    DetailItem(label = "Date", value = reservation.date)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    DetailItem(label = "Time", value = reservation.time)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    DetailItem(label = "Amount", value = reservation.amount)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    DetailItem(label = "Purpose", value = reservation.purpose)
+                }
+            }
+
+            // Rejection Reason
+            if (reservation.rejectionReason != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    color = Color(0xFFFFEBEE),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFEF5350),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Rejection Reason:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEF5350)
+                            )
+                            Text(
+                                text = reservation.rejectionReason,
+                                fontSize = 12.sp,
+                                color = Color(0xFFD32F2F)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Action Button
+            if (reservation.status == ReservationStatus.PENDING) {
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(
+                    onClick = { /* Handle cancel */ },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = Color(0xFFEF5350)
+                    )
+                ) {
+                    Text("Cancel Reservation")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailItem(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = MediumGray
+        )
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = DeepNavy
+        )
+    }
+}
+
+// ============================================================================
+// OTHER SCREENS (PLACEHOLDERS)
+// ============================================================================
+
 @Composable
 fun Reservation() {
     ScreenContent("Make a Reservation")
 }
 
 @Composable
-fun Reservations() {
-    ScreenContent("Reservations")
-}
-
-@Composable
 fun Balance() {
     ScreenContent("My Balance")
 }
+
+@Composable
+fun ScreenContent(title: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LightLavender),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            color = DeepNavy
+        )
+    }
+}
+
+// ============================================================================
+// ACCOUNT SCREEN
+// ============================================================================
 
 @Composable
 fun Account(user: User) {
@@ -1003,23 +1500,6 @@ fun PersonalInfoRow(
             fontSize = 14.sp,
             color = DeepNavy,
             fontWeight = FontWeight.Normal
-        )
-    }
-}
-
-@Composable
-fun ScreenContent(title: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LightLavender),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = title,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = DeepNavy
         )
     }
 }
