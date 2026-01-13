@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.*
 
 // Helper to convert time string to minutes for comparison
@@ -46,7 +49,7 @@ fun timeToMinutes(time: String): Int {
 }
 
 @Composable
-fun Reservation(user: User) {
+fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
     var viewMode by remember { mutableStateOf("month") }
     var selectedDate by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
     var selectedMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
@@ -351,6 +354,7 @@ fun Reservation(user: User) {
         if (showScheduleDialog) {
             ScheduleFacilityDialog(
                 user = user,
+                viewModel = viewModel, // Pass the viewModel to the dialog
                 selectedDate = selectedDate,
                 selectedMonth = selectedMonth,
                 selectedYear = selectedYear,
@@ -482,6 +486,7 @@ fun CalendarEventItem(event: CalendarEvent) {
 @Composable
 fun ScheduleFacilityDialog(
     user: User,
+    viewModel: ReservationViewModel, // ViewModel link added here
     selectedDate: Int,
     selectedMonth: Int,
     selectedYear: Int,
@@ -635,7 +640,7 @@ fun ScheduleFacilityDialog(
                             color = Color.DarkGray,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        
+
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
                             modifier = Modifier.height(180.dp),
@@ -644,17 +649,17 @@ fun ScheduleFacilityDialog(
                         ) {
                             items(timeSlots) { slot ->
                                 val isSelected = selectedTimeSlots.contains(slot)
-                                
+
                                 // Precise overlap logic
                                 val slotTimes = slot.split(" - ")
                                 val sStart = timeToMinutes(slotTimes[0])
                                 val sEnd = timeToMinutes(slotTimes[1])
-                                
+
                                 val isTaken = if (selectedFacility != null) {
-                                    calendarEvents.any { e -> 
-                                        e.venue == selectedFacility?.name && 
-                                        e.date == formattedDate && 
-                                        maxOf(sStart, timeToMinutes(e.startTime)) < minOf(sEnd, timeToMinutes(e.endTime))
+                                    calendarEvents.any { e ->
+                                        e.venue == selectedFacility?.name &&
+                                                e.date == formattedDate &&
+                                                maxOf(sStart, timeToMinutes(e.startTime)) < minOf(sEnd, timeToMinutes(e.endTime))
                                     }
                                 } else false
 
@@ -727,12 +732,24 @@ fun ScheduleFacilityDialog(
                                 errorMessage = "Please select at least one time slot"
                             } else {
                                 val sortedSlots = selectedTimeSlots.toList().sortedBy { timeToMinutes(it.split(" - ")[0]) }
+                                val startT = sortedSlots.first().split(" - ").first()
+                                val endT = sortedSlots.last().split(" - ").last()
+                                val displayDate = String.format(Locale.US, "%s %d, %d", monthNames[selectedMonth], selectedDate, selectedYear)
+
+                                // Logic to send to History Screen
+                                viewModel.addReservation(
+                                    title = selectedFacility!!.name,
+                                    date = displayDate,
+                                    time = "$startT - $endT"
+                                )
+
+                                // Logic to add dot on Calendar
                                 val newEvent = CalendarEvent(
                                     id = calendarEvents.size + 1,
                                     title = selectedFacility!!.name,
                                     date = formattedDate,
-                                    startTime = sortedSlots.first().split(" - ").first(),
-                                    endTime = sortedSlots.last().split(" - ").last(),
+                                    startTime = startT,
+                                    endTime = endT,
                                     venue = selectedFacility!!.name,
                                     description = "Purpose: $purpose"
                                 )
