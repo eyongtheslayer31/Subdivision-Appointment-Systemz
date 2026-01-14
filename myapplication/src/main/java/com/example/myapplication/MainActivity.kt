@@ -130,7 +130,6 @@ fun ProfileSidebarApp(user: User, viewModel: ReservationViewModel, onLogout: () 
                                     "home" -> "Home"
                                     "reservation" -> "New Reservation"
                                     "reservations" -> "My History"
-                                    "balance" -> "Payments"
                                     "account" -> "Profile"
                                     else -> "App"
                                 },
@@ -148,10 +147,9 @@ fun ProfileSidebarApp(user: User, viewModel: ReservationViewModel, onLogout: () 
             ) { padding ->
                 Box(modifier = Modifier.padding(padding)) {
                     NavHost(navController = navController, startDestination = "home") {
-                        composable("home") { HomeScreen() }
+                        composable("home") { HomeScreen(user) }
                         composable("reservation") { Reservation(user, viewModel) }
                         composable("reservations") { Reservations(viewModel) }
-                        composable("balance") { Balance() }
                         composable("account") { Account(user) }
                     }
                 }
@@ -175,7 +173,7 @@ fun Reservations(viewModel: ReservationViewModel) {
     Column(modifier = Modifier.fillMaxSize().background(LightLavender).padding(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             FilterChipItem("All", selectedFilter == null) { selectedFilter = null }
             ReservationStatus.entries.forEach { status ->
@@ -237,8 +235,10 @@ fun ProfileDrawerContent(user: User, onNavigate: (String) -> Unit) {
         Column(modifier = Modifier.fillMaxSize().padding(vertical = 24.dp)) {
             DrawerMenuItem(Icons.Default.Home, "Home") { onNavigate("home") }
             DrawerMenuItem(Icons.Default.CalendarMonth, "Make a Reservation") { onNavigate("reservation") }
-            DrawerMenuItem(Icons.Default.Event, "Reservations") { onNavigate("reservations") }
-            DrawerMenuItem(Icons.Default.AccountBalance, "My Balance") { onNavigate("balance") }
+            // Role-based visibility for Reservations History tab
+            if (user.role != "Admin") {
+                DrawerMenuItem(Icons.Default.Event, "Reservations") { onNavigate("reservations") }
+            }
             DrawerMenuItem(Icons.Default.Person, "My Account") { onNavigate("account") }
             Spacer(Modifier.weight(1f))
             DrawerMenuItem(Icons.Default.Close, "Logout") { onNavigate("logout") }
@@ -257,12 +257,5 @@ fun DrawerMenuItem(icon: ImageVector, title: String, onClick: () -> Unit) {
         Icon(icon, null, tint = DeepNavy)
         Spacer(Modifier.width(16.dp))
         Text(title, color = DeepNavy)
-    }
-}
-
-@Composable fun Balance() { ScreenContent("My Balance") }
-@Composable fun ScreenContent(title: String) {
-    Box(Modifier.fillMaxSize().background(LightLavender), contentAlignment = Alignment.Center) {
-        Text(title, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = DeepNavy)
     }
 }

@@ -9,7 +9,7 @@ val availableFacilities = listOf(
     Facility(3, "Multipurpose Hall", "🏛️"),
     Facility(4, "Tennis Court", "🎾")
 )
-// paghiwalayin start time and end time
+
 // Time slots for the picker
 val timeSlots = listOf(
     "8:00 AM - 9:00 AM", "9:00 AM - 10:00 AM", "10:00 AM - 11:00 AM", "11:00 AM - 12:00 NN",
@@ -25,13 +25,13 @@ val calendarEvents = mutableStateListOf<CalendarEvent>(
     CalendarEvent(3, "Sports Event", "2026-01-06", "10:00 AM", "3:00 PM", "Barangay Gym", "Basketball tournament")
 )
 
-// Static community events for the home screen
-val sampleEvents = listOf(
+// The reactive list that stores community events for the home screen
+val sampleEvents = mutableStateListOf<CommunityEvent>(
     CommunityEvent(
         id = 1,
-        title = "Event",
-        timeRange = "Fri, Jan 5 9:00 AM – 5:00 PM",
-        description = "Lorem ipsum dolor sit amet.",
+        title = "Community Meeting",
+        timeRange = "Fri, Jan 5 9:00 AM – 12:00 PM",
+        description = "Monthly community gathering for all residents.",
         schedules = listOf(EventSchedule("January 5, 2026", "9:00 AM - 12:00 PM", "Barangay Hall"))
     )
 )

@@ -32,7 +32,9 @@ data class CalendarEvent(
     val startTime: String,
     val endTime: String,
     val venue: String,
-    val description: String
+    val description: String,
+    val reservedBy: String = "",
+    val reserverPhone: String = ""
 )
 
 data class Facility(

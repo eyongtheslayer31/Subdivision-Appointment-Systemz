@@ -16,8 +16,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -346,6 +344,7 @@ fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
             CalendarEventDialog(
                 date = String.format(Locale.US, "%s %d, %d", monthNames[selectedMonth], selectedDate, selectedYear),
                 events = selectedEvents,
+                isAdmin = user.role == "Admin",
                 onDismiss = { showEventDetails = false }
             )
         }
@@ -354,7 +353,7 @@ fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
         if (showScheduleDialog) {
             ScheduleFacilityDialog(
                 user = user,
-                viewModel = viewModel, // Pass the viewModel to the dialog
+                viewModel = viewModel,
                 selectedDate = selectedDate,
                 selectedMonth = selectedMonth,
                 selectedYear = selectedYear,
@@ -369,6 +368,7 @@ fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
 fun CalendarEventDialog(
     date: String,
     events: List<CalendarEvent>,
+    isAdmin: Boolean,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -419,7 +419,7 @@ fun CalendarEventDialog(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     events.forEach { event ->
-                        CalendarEventItem(event)
+                        CalendarEventItem(event, isAdmin)
                     }
                 }
             }
@@ -428,7 +428,7 @@ fun CalendarEventDialog(
 }
 
 @Composable
-fun CalendarEventItem(event: CalendarEvent) {
+fun CalendarEventItem(event: CalendarEvent, isAdmin: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -473,11 +473,37 @@ fun CalendarEventItem(event: CalendarEvent) {
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
+                text = event.venue,
+                fontSize = 12.sp,
+                color = DeepNavy.copy(alpha = 0.7f)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
                 text = event.description,
                 fontSize = 12.sp,
                 color = DeepNavy.copy(alpha = 0.6f),
                 lineHeight = 16.sp
             )
+
+            if (isAdmin && (event.reservedBy.isNotEmpty() || event.reserverPhone.isNotEmpty())) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Divider(color = DeepNavy.copy(alpha = 0.1f))
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "Reserved by: ${event.reservedBy}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DeepNavy
+                )
+                Text(
+                    text = "Contact: ${event.reserverPhone}",
+                    fontSize = 12.sp,
+                    color = MediumGray
+                )
+            }
         }
     }
 }
@@ -486,7 +512,7 @@ fun CalendarEventItem(event: CalendarEvent) {
 @Composable
 fun ScheduleFacilityDialog(
     user: User,
-    viewModel: ReservationViewModel, // ViewModel link added here
+    viewModel: ReservationViewModel,
     selectedDate: Int,
     selectedMonth: Int,
     selectedYear: Int,
@@ -579,7 +605,7 @@ fun ScheduleFacilityDialog(
                                 onClick = {
                                     selectedFacility = facility
                                     expanded = false
-                                    selectedTimeSlots = emptySet() // Clear slots when facility changes
+                                    selectedTimeSlots = emptySet()
                                     errorMessage = ""
                                 }
                             )
@@ -592,7 +618,12 @@ fun ScheduleFacilityDialog(
                 Text("Phone Number", fontSize = 12.sp, color = DeepNavy, fontWeight = FontWeight.Medium)
                 OutlinedTextField(
                     value = phoneNumber,
-                    onValueChange = { phoneNumber = it },
+                    onValueChange = { 
+                        // Strict 11-digit limit
+                        if (it.length <= 11 && it.all { char -> char.isDigit() }) {
+                            phoneNumber = it
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -601,7 +632,7 @@ fun ScheduleFacilityDialog(
                         focusedBorderColor = Color.Transparent,
                         unfocusedBorderColor = Color.Transparent
                     ),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true
                 )
 
@@ -730,20 +761,22 @@ fun ScheduleFacilityDialog(
                                 errorMessage = "Please select a facility"
                             } else if (selectedTimeSlots.isEmpty()) {
                                 errorMessage = "Please select at least one time slot"
+                            } else if (phoneNumber.isEmpty()) {
+                                errorMessage = "Please enter contact number"
+                            } else if (phoneNumber.length < 11) {
+                                errorMessage = "Phone number must be exactly 11 digits"
                             } else {
                                 val sortedSlots = selectedTimeSlots.toList().sortedBy { timeToMinutes(it.split(" - ")[0]) }
                                 val startT = sortedSlots.first().split(" - ").first()
                                 val endT = sortedSlots.last().split(" - ").last()
                                 val displayDate = String.format(Locale.US, "%s %d, %d", monthNames[selectedMonth], selectedDate, selectedYear)
 
-                                // Logic to send to History Screen
                                 viewModel.addReservation(
                                     title = selectedFacility!!.name,
                                     date = displayDate,
                                     time = "$startT - $endT"
                                 )
 
-                                // Logic to add dot on Calendar
                                 val newEvent = CalendarEvent(
                                     id = calendarEvents.size + 1,
                                     title = selectedFacility!!.name,
@@ -751,7 +784,9 @@ fun ScheduleFacilityDialog(
                                     startTime = startT,
                                     endTime = endT,
                                     venue = selectedFacility!!.name,
-                                    description = "Purpose: $purpose"
+                                    description = "Purpose: $purpose",
+                                    reservedBy = user.name, // Store private info
+                                    reserverPhone = phoneNumber // Store private info
                                 )
                                 calendarEvents.add(newEvent)
                                 onDismiss()
