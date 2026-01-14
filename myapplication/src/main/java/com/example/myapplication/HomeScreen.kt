@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -195,7 +197,7 @@ fun AddEventDialog(onDismiss: () -> Unit) {
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
             modifier = Modifier
-                .fillMaxWidth(0.95f)
+                .fillMaxWidth()
                 .padding(vertical = 8.dp)
         ) {
             Column(
@@ -314,7 +316,7 @@ fun AddEventDialog(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
-                    modifier = Modifier.height(150.dp),
+                    modifier = Modifier.height(200.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -322,7 +324,7 @@ fun AddEventDialog(onDismiss: () -> Unit) {
                         val isSelected = selectedTimeSlots.contains(slot)
                         Box(
                             modifier = Modifier
-                                .height(55.dp)
+                                .height(55.dp) // FIXED HEIGHT for all slots
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(if (isSelected) Color(0xFF1E88E5) else Color(0xFFE0F2F1))
                                 .clickable {
@@ -331,13 +333,21 @@ fun AddEventDialog(onDismiss: () -> Unit) {
                                 .padding(4.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = slot, 
-                                fontSize = 8.sp, 
-                                color = if (isSelected) Color.White else Color(0xFF2E7D32), 
-                                textAlign = TextAlign.Center,
-                                lineHeight = 10.sp
-                            )
+                            val times = slot.split(" - ")
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = times[0],
+                                    fontSize = 8.sp,
+                                    color = if (isSelected) Color.White else Color(0xFF2E7D32),
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = "to ${times[1]}",
+                                    fontSize = 8.sp,
+                                    color = if (isSelected) Color.White else Color(0xFF2E7D32),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
                     }
                 }
@@ -441,14 +451,14 @@ fun EventScheduleDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(24.dp),
             color = Color.White,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.65f) 
         ) {
             Column(
-                modifier = Modifier.padding(20.dp)
+                modifier = Modifier.padding(24.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -457,9 +467,10 @@ fun EventScheduleDialog(
                 ) {
                     Text(
                         text = event.title,
-                        fontSize = 20.sp,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = DeepNavy,
+                        modifier = Modifier.weight(1f)
                     )
 
                     IconButton(
@@ -474,21 +485,22 @@ fun EventScheduleDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
                     text = "Available Schedules",
-                    fontSize = 16.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = DeepNavy
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    event.schedules.forEach { schedule ->
+                    items(event.schedules) { schedule ->
                         ScheduleItem(schedule)
                     }
                 }
@@ -501,39 +513,56 @@ fun EventScheduleDialog(
 fun ScheduleItem(schedule: EventSchedule) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = LightLavender
+            containerColor = LightLavender.copy(alpha = 0.5f)
         )
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = schedule.date,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+            // DATE and TIME now stacked vertically to prevent overlap
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = DarkBlueGray
                 )
-
-                Text(
-                    text = schedule.time,
-                    fontSize = 12.sp,
-                    color = MediumGray
-                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = schedule.date,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepNavy
+                    )
+                    Text(
+                        text = schedule.time,
+                        fontSize = 14.sp,
+                        color = MediumGray,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Text(
-                text = schedule.venue,
-                fontSize = 12.sp,
-                color = DeepNavy.copy(alpha = 0.7f)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn, 
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = DarkBlueGray
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = schedule.venue,
+                    fontSize = 14.sp,
+                    color = DeepNavy.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }

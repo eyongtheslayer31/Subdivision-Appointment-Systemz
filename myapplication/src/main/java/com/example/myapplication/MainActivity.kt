@@ -47,26 +47,56 @@ data class ReservationItem(
     val date: String,
     val time: String,
     val status: ReservationStatus,
-    val location: String = "Clubhouse"
+    val reservedBy: String = "",
+    val contact: String = "",
+    val purpose: String = "",
+    val formattedDate: String = "" // Added for calendar sync
 )
 
 // --- 2. SHARED VIEWMODEL ---
 
 class ReservationViewModel : ViewModel() {
-    private val _reservations = mutableStateListOf<ReservationItem>(
-        ReservationItem("1", "Basketball Court", "Oct 24, 2023", "02:00 PM", ReservationStatus.ACTIVE),
-        ReservationItem("2", "Swimming Pool", "Oct 25, 2023", "10:00 AM", ReservationStatus.PENDING)
-    )
+    private val _reservations = mutableStateListOf<ReservationItem>()
     val reservations: List<ReservationItem> get() = _reservations
 
-    fun addReservation(title: String, date: String, time: String) {
+    fun addReservation(title: String, date: String, time: String, user: String, phone: String, note: String, formattedDate: String) {
         val newItem = ReservationItem(
             title = title,
             date = date,
             time = time,
-            status = ReservationStatus.PENDING
+            status = ReservationStatus.PENDING,
+            reservedBy = user,
+            contact = phone,
+            purpose = note,
+            formattedDate = formattedDate
         )
         _reservations.add(0, newItem)
+    }
+
+    fun updateStatus(id: String, newStatus: ReservationStatus) {
+        val index = _reservations.indexOfFirst { it.id == id }
+        if (index != -1) {
+            val item = _reservations[index]
+            _reservations[index] = item.copy(status = newStatus)
+            
+            // If approved, add to the global calendar
+            if (newStatus == ReservationStatus.ACTIVE) {
+                val times = item.time.split(" - ")
+                calendarEvents.add(
+                    CalendarEvent(
+                        id = calendarEvents.size + 1,
+                        title = item.title,
+                        date = item.formattedDate,
+                        startTime = times[0],
+                        endTime = times[1],
+                        venue = item.title,
+                        description = "Purpose: ${item.purpose}",
+                        reservedBy = item.reservedBy,
+                        reserverPhone = item.contact
+                    )
+                )
+            }
+        }
     }
 }
 
@@ -130,6 +160,7 @@ fun ProfileSidebarApp(user: User, viewModel: ReservationViewModel, onLogout: () 
                                     "home" -> "Home"
                                     "reservation" -> "New Reservation"
                                     "reservations" -> "My History"
+                                    "approval" -> "Approval Request"
                                     "account" -> "Profile"
                                     else -> "App"
                                 },
@@ -150,6 +181,7 @@ fun ProfileSidebarApp(user: User, viewModel: ReservationViewModel, onLogout: () 
                         composable("home") { HomeScreen(user) }
                         composable("reservation") { Reservation(user, viewModel) }
                         composable("reservations") { Reservations(viewModel) }
+                        composable("approval") { ApprovalScreen(viewModel) }
                         composable("account") { Account(user) }
                     }
                 }
@@ -158,7 +190,73 @@ fun ProfileSidebarApp(user: User, viewModel: ReservationViewModel, onLogout: () 
     )
 }
 
-// --- 4. RESERVATIONS HISTORY SCREEN ---
+// --- 4. ADMIN APPROVAL SCREEN ---
+
+@Composable
+fun ApprovalScreen(viewModel: ReservationViewModel) {
+    val pendingReservations = viewModel.reservations.filter { it.status == ReservationStatus.PENDING }
+
+    Column(modifier = Modifier.fillMaxSize().background(LightLavender).padding(16.dp)) {
+        Text("Pending Requests", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DeepNavy, modifier = Modifier.padding(bottom = 16.dp))
+        
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(pendingReservations) { item ->
+                ApprovalCard(item, onAccept = {
+                    viewModel.updateStatus(item.id, ReservationStatus.ACTIVE)
+                }, onReject = {
+                    viewModel.updateStatus(item.id, ReservationStatus.REJECTED)
+                })
+            }
+            if (pendingReservations.isEmpty()) {
+                item {
+                    Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No pending requests", color = MediumGray)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ApprovalCard(reservation: ReservationItem, onAccept: () -> Unit, onReject: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text(reservation.title, fontWeight = FontWeight.Bold, color = DeepNavy, fontSize = 18.sp)
+                    Text(reservation.date, color = MediumGray, fontSize = 14.sp)
+                    Text(reservation.time, color = MediumGray, fontSize = 14.sp)
+                }
+                Surface(color = Color(0xFFE8EBFA), shape = RoundedCornerShape(8.dp)) {
+                    Text("PENDING", color = ReservationStatus.PENDING.color, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Divider(color = Color.LightGray.copy(alpha = 0.5f))
+            Spacer(Modifier.height(12.dp))
+            Text("Reserved by: ${reservation.reservedBy}", fontSize = 14.sp, color = DeepNavy)
+            Text("Contact: ${reservation.contact}", fontSize = 14.sp, color = DeepNavy)
+            Text("Purpose: ${reservation.purpose}", fontSize = 14.sp, color = DeepNavy)
+            
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp) ) {
+                Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)), shape = RoundedCornerShape(8.dp)) {
+                    Text("Reject")
+                }
+                Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2ECC71)), shape = RoundedCornerShape(8.dp)) {
+                    Text("Accept")
+                }
+            }
+        }
+    }
+}
+
+// --- 5. RESERVATIONS HISTORY SCREEN ---
 
 @Composable
 fun Reservations(viewModel: ReservationViewModel) {
@@ -196,7 +294,7 @@ fun Reservations(viewModel: ReservationViewModel) {
     }
 }
 
-// --- 5. UI COMPONENTS & HELPERS ---
+// --- 6. UI COMPONENTS & HELPERS ---
 
 @Composable
 fun ReservationCard(reservation: ReservationItem) {
@@ -235,10 +333,13 @@ fun ProfileDrawerContent(user: User, onNavigate: (String) -> Unit) {
         Column(modifier = Modifier.fillMaxSize().padding(vertical = 24.dp)) {
             DrawerMenuItem(Icons.Default.Home, "Home") { onNavigate("home") }
             DrawerMenuItem(Icons.Default.CalendarMonth, "Make a Reservation") { onNavigate("reservation") }
-            // Role-based visibility for Reservations History tab
-            if (user.role != "Admin") {
+            
+            if (user.role == "Admin") {
+                DrawerMenuItem(Icons.Default.Rule, "Approval Request") { onNavigate("approval") }
+            } else {
                 DrawerMenuItem(Icons.Default.Event, "Reservations") { onNavigate("reservations") }
             }
+            
             DrawerMenuItem(Icons.Default.Person, "My Account") { onNavigate("account") }
             Spacer(Modifier.weight(1f))
             DrawerMenuItem(Icons.Default.Close, "Logout") { onNavigate("logout") }

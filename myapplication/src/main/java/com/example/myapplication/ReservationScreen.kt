@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -771,24 +773,20 @@ fun ScheduleFacilityDialog(
                                 val endT = sortedSlots.last().split(" - ").last()
                                 val displayDate = String.format(Locale.US, "%s %d, %d", monthNames[selectedMonth], selectedDate, selectedYear)
 
+                                // 1. Add to ViewModel (PENDING state) for Admin Approval
                                 viewModel.addReservation(
                                     title = selectedFacility!!.name,
                                     date = displayDate,
-                                    time = "$startT - $endT"
+                                    formattedDate = formattedDate, // Pass formatted date for sync
+                                    time = "$startT - $endT",
+                                    user = user.name,
+                                    phone = phoneNumber,
+                                    note = purpose
                                 )
 
-                                val newEvent = CalendarEvent(
-                                    id = calendarEvents.size + 1,
-                                    title = selectedFacility!!.name,
-                                    date = formattedDate,
-                                    startTime = startT,
-                                    endTime = endT,
-                                    venue = selectedFacility!!.name,
-                                    description = "Purpose: $purpose",
-                                    reservedBy = user.name, // Store private info
-                                    reserverPhone = phoneNumber // Store private info
-                                )
-                                calendarEvents.add(newEvent)
+                                // Note: We do NOT add to calendarEvents here.
+                                // It will only be added once the admin "Accepts" it in the Approval Screen.
+                                
                                 onDismiss()
                             }
                         },
