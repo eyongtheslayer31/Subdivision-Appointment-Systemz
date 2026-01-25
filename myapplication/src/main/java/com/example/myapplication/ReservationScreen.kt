@@ -530,6 +530,7 @@ fun ScheduleFacilityDialog(
     monthNames: List<String>,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     var selectedFacility by remember { mutableStateOf<Facility?>(null) }
     var selectedTimeSlots by remember { mutableStateOf(setOf<String>()) }
     var purpose by remember { mutableStateOf("") }
@@ -549,6 +550,7 @@ fun ScheduleFacilityDialog(
         PaymentConfirmationDialog(
             onConfirm = { proofUri ->
                 viewModel.addReservation(
+                    context = context,
                     title = selectedFacility!!.name,
                     date = displayDate,
                     formattedDate = formattedDate,

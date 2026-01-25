@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -65,7 +66,40 @@ class ReservationViewModel : ViewModel() {
     private val _reservations = mutableStateListOf<ReservationItem>()
     val reservations: List<ReservationItem> get() = _reservations
 
-    fun addReservation(title: String, date: String, time: String, user: String, phone: String, note: String, formattedDate: String, paymentProof: String?) {
+    fun loadData(context: Context) {
+        if (_reservations.isEmpty()) {
+            val saved = ReservationRepository.loadReservations(context)
+            _reservations.addAll(saved)
+            
+            // Sync active reservations to calendarEvents
+            saved.filter { it.status == ReservationStatus.ACTIVE }.forEach { item ->
+                val times = item.time.split(" - ")
+                val startT = times[0]
+                val endT = if (times.size > 1) times[1] else ""
+                
+                val alreadyExists = calendarEvents.any { 
+                    it.title == item.title && it.date == item.formattedDate && it.startTime == startT 
+                }
+                if (!alreadyExists) {
+                    calendarEvents.add(
+                        CalendarEvent(
+                            id = calendarEvents.size + 1,
+                            title = item.title,
+                            date = item.formattedDate,
+                            startTime = startT,
+                            endTime = endT,
+                            venue = item.title,
+                            description = "Purpose: ${item.purpose}",
+                            reservedBy = item.reservedBy,
+                            reserverPhone = item.contact
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun addReservation(context: Context, title: String, date: String, time: String, user: String, phone: String, note: String, formattedDate: String, paymentProof: String?) {
         val newItem = ReservationItem(
             title = title,
             date = date,
@@ -78,13 +112,15 @@ class ReservationViewModel : ViewModel() {
             paymentProofUri = paymentProof
         )
         _reservations.add(0, newItem)
+        ReservationRepository.saveReservations(context, _reservations)
     }
 
-    fun updateStatus(id: String, newStatus: ReservationStatus) {
+    fun updateStatus(context: Context, id: String, newStatus: ReservationStatus) {
         val index = _reservations.indexOfFirst { it.id == id }
         if (index != -1) {
             val item = _reservations[index]
             _reservations[index] = item.copy(status = newStatus)
+            ReservationRepository.saveReservations(context, _reservations)
             
             if (newStatus == ReservationStatus.ACTIVE) {
                 val times = item.time.split(" - ")
@@ -117,6 +153,7 @@ class MainActivity : ComponentActivity() {
             
             LaunchedEffect(Unit) {
                 UserRepository.loadPersistedData(context)
+                resViewModel.loadData(context)
             }
 
             MaterialTheme(
@@ -288,6 +325,7 @@ fun DrawerMenuItem(icon: ImageVector, title: String, onClick: () -> Unit) {
 
 @Composable
 fun ApprovalScreen(viewModel: ReservationViewModel) {
+    val context = LocalContext.current
     val pendingReservations = viewModel.reservations.filter { it.status == ReservationStatus.PENDING }
 
     Column(modifier = Modifier.fillMaxSize().background(LightLavender).padding(16.dp)) {
@@ -296,9 +334,9 @@ fun ApprovalScreen(viewModel: ReservationViewModel) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(pendingReservations) { item ->
                 ApprovalCard(item, onAccept = {
-                    viewModel.updateStatus(item.id, ReservationStatus.ACTIVE)
+                    viewModel.updateStatus(context, item.id, ReservationStatus.ACTIVE)
                 }, onReject = {
-                    viewModel.updateStatus(item.id, ReservationStatus.REJECTED)
+                    viewModel.updateStatus(context, item.id, ReservationStatus.REJECTED)
                 })
             }
             if (pendingReservations.isEmpty()) {
