@@ -6,7 +6,6 @@ import org.json.JSONObject
 
 object ReservationRepository {
     private const val PREFS_NAME = "reservation_prefs"
-    // Changed key to effectively "delete" old records and start fresh
     private const val KEY_RESERVATIONS = "all_reservations_v2"
 
     fun saveReservations(context: Context, reservations: List<ReservationItem>) {
@@ -24,6 +23,7 @@ object ReservationRepository {
                 put("purpose", item.purpose)
                 put("formattedDate", item.formattedDate)
                 put("paymentProofUri", item.paymentProofUri ?: "")
+                put("rejectionReason", item.rejectionReason ?: "")
             }
             jsonArray.put(jsonObject)
         }
@@ -48,7 +48,8 @@ object ReservationRepository {
                     contact = jsonObject.getString("contact"),
                     purpose = jsonObject.getString("purpose"),
                     formattedDate = jsonObject.getString("formattedDate"),
-                    paymentProofUri = jsonObject.getString("paymentProofUri").takeIf { it.isNotEmpty() }
+                    paymentProofUri = jsonObject.getString("paymentProofUri").takeIf { it.isNotEmpty() },
+                    rejectionReason = jsonObject.optString("rejectionReason").takeIf { it.isNotEmpty() }
                 )
                 reservations.add(item)
             }

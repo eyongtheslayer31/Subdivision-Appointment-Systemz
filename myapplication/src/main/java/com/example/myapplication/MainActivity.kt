@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -41,7 +42,7 @@ import java.util.UUID
 // --- 1. DATA MODELS & ENUMS ---
 
 enum class ReservationStatus(val displayName: String, val color: Color) {
-    PENDING("Pending", Color(0xFFF59E0B)), // PendingOrange
+    PENDING("Pending", Color(0xFFF59E0B)),
     ACTIVE("Active", SuccessGreen),
     COMPLETED("Completed", Color(0xFF2980B9)),
     REJECTED("Rejected", Color(0xFFC0392B))
@@ -57,7 +58,8 @@ data class ReservationItem(
     val contact: String = "",
     val purpose: String = "",
     val formattedDate: String = "",
-    val paymentProofUri: String? = null
+    val paymentProofUri: String? = null,
+    val rejectionReason: String? = null
 )
 
 // --- 2. SHARED VIEWMODEL ---
@@ -81,7 +83,6 @@ class ReservationViewModel : ViewModel() {
                 val startT = times[0]
                 val endT = if (times.size > 1) times[1] else ""
                 
-                // Find the user's role for this reservation
                 val user = UserRepository.users.find { it.name == item.reservedBy }
                 
                 calendarEvents.add(
@@ -120,11 +121,17 @@ class ReservationViewModel : ViewModel() {
         refreshCalendarEvents()
     }
 
-    fun updateStatus(context: Context, id: String, newStatus: ReservationStatus) {
+    fun addReservationDirect(context: Context, item: ReservationItem) {
+        _reservations.add(0, item)
+        ReservationRepository.saveReservations(context, _reservations)
+        refreshCalendarEvents()
+    }
+
+    fun updateStatus(context: Context, id: String, newStatus: ReservationStatus, reason: String? = null) {
         val index = _reservations.indexOfFirst { it.id == id }
         if (index != -1) {
             val item = _reservations[index]
-            _reservations[index] = item.copy(status = newStatus)
+            _reservations[index] = item.copy(status = newStatus, rejectionReason = reason)
             ReservationRepository.saveReservations(context, _reservations)
             refreshCalendarEvents()
         }
@@ -159,7 +166,6 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 var currentUsername by remember { mutableStateOf<String?>(null) }
-                // Re-find the user in the reactive list whenever currentUsername changes or the list itself changes
                 val currentUser = UserRepository.users.find { it.username == currentUsername }
 
                 if (currentUser == null) {
@@ -206,6 +212,7 @@ fun ProfileSidebarApp(user: User, viewModel: ReservationViewModel, onLogout: () 
                                     "reservation" -> "New Reservation"
                                     "reservations" -> "My History"
                                     "approval" -> "Approval Request"
+                                    "admin_history" -> "History Logs"
                                     "account" -> "Profile"
                                     else -> "App"
                                 },
@@ -226,10 +233,11 @@ fun ProfileSidebarApp(user: User, viewModel: ReservationViewModel, onLogout: () 
             ) { padding ->
                 Box(modifier = Modifier.padding(padding)) {
                     NavHost(navController = navController, startDestination = "home") {
-                        composable("home") { HomeScreen(user) }
+                        composable("home") { HomeScreen(user, viewModel) }
                         composable("reservation") { Reservation(user, viewModel) }
                         composable("reservations") { Reservations(user, viewModel) }
                         composable("approval") { ApprovalScreen(viewModel) }
+                        composable("admin_history") { AdminHistory(viewModel) }
                         composable("account") { Account(user) }
                     }
                 }
@@ -245,7 +253,6 @@ fun ProfileDrawerContent(user: User, onNavigate: (String) -> Unit) {
         drawerContentColor = Color.White
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(vertical = 24.dp)) {
-            // User Profile Section at the TOP - Now Clickable
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -280,21 +287,20 @@ fun ProfileDrawerContent(user: User, onNavigate: (String) -> Unit) {
 
             HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 8.dp))
 
-            // Navigation Items
             DrawerMenuItem(Icons.Default.Home, "Home") { onNavigate("home") }
             DrawerMenuItem(Icons.Default.CalendarMonth, "Make a Reservation") { onNavigate("reservation") }
             
             if (user.role == "Admin") {
                 DrawerMenuItem(Icons.AutoMirrored.Filled.Rule, "Approval Request") { onNavigate("approval") }
+                DrawerMenuItem(Icons.Default.History, "History Logs") { onNavigate("admin_history") }
             } else {
                 DrawerMenuItem(Icons.Default.Event, "Reservations") { onNavigate("reservations") }
             }
             
             DrawerMenuItem(Icons.Default.Person, "My Account") { onNavigate("account") }
             
-            Spacer(Modifier.weight(1f)) // Push logout to bottom
+            Spacer(Modifier.weight(1f))
 
-            // Logout Section at the BOTTOM
             HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 8.dp))
             DrawerMenuItem(Icons.AutoMirrored.Filled.Logout, "Logout") { onNavigate("logout") }
         }
@@ -330,8 +336,8 @@ fun ApprovalScreen(viewModel: ReservationViewModel) {
             items(pendingReservations) { item ->
                 ApprovalCard(item, onAccept = {
                     viewModel.updateStatus(context, item.id, ReservationStatus.ACTIVE)
-                }, onReject = {
-                    viewModel.updateStatus(context, item.id, ReservationStatus.REJECTED)
+                }, onReject = { reason ->
+                    viewModel.updateStatus(context, item.id, ReservationStatus.REJECTED, reason)
                 })
             }
             if (pendingReservations.isEmpty()) {
@@ -346,8 +352,10 @@ fun ApprovalScreen(viewModel: ReservationViewModel) {
 }
 
 @Composable
-fun ApprovalCard(reservation: ReservationItem, onAccept: () -> Unit, onReject: () -> Unit) {
+fun ApprovalCard(reservation: ReservationItem, onAccept: () -> Unit, onReject: (String) -> Unit) {
     var showPaymentProof by remember { mutableStateOf(false) }
+    var showRejectDialog by remember { mutableStateOf(false) }
+    var rejectionReason by remember { mutableStateOf("") }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -366,7 +374,7 @@ fun ApprovalCard(reservation: ReservationItem, onAccept: () -> Unit, onReject: (
                 }
             }
             Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
             Spacer(Modifier.height(12.dp))
             Text("Reserved by: ${reservation.reservedBy}", fontSize = 14.sp, color = DeepNavy)
             Text("Contact: ${reservation.contact}", fontSize = 14.sp, color = DeepNavy)
@@ -390,7 +398,7 @@ fun ApprovalCard(reservation: ReservationItem, onAccept: () -> Unit, onReject: (
 
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp) ) {
-                Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)), shape = RoundedCornerShape(8.dp)) {
+                Button(onClick = { showRejectDialog = true }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)), shape = RoundedCornerShape(8.dp)) {
                     Text("Reject")
                 }
                 Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen), shape = RoundedCornerShape(8.dp)) {
@@ -400,8 +408,43 @@ fun ApprovalCard(reservation: ReservationItem, onAccept: () -> Unit, onReject: (
         }
     }
 
+    if (showRejectDialog) {
+        AlertDialog(
+            onDismissRequest = { showRejectDialog = false },
+            title = { Text("Reject Reservation") },
+            text = {
+                Column {
+                    Text("Please provide a reason for rejecting this reservation.")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = rejectionReason,
+                        onValueChange = { rejectionReason = it },
+                        label = { Text("Reason") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onReject(rejectionReason)
+                        showRejectDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C))
+                ) {
+                    Text("Confirm Rejection")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if (showPaymentProof && reservation.paymentProofUri != null) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { showPaymentProof = false }) {
+        Dialog(onDismissRequest = { showPaymentProof = false }) {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = RoundedCornerShape(16.dp),
@@ -425,11 +468,80 @@ fun ApprovalCard(reservation: ReservationItem, onAccept: () -> Unit, onReject: (
     }
 }
 
-// --- 5. RESERVATIONS HISTORY SCREEN ---
+// --- 5. ADMIN HISTORY SCREEN ---
+
+@Composable
+fun AdminHistory(viewModel: ReservationViewModel) {
+    val allReservations = viewModel.reservations.filter { 
+        it.status != ReservationStatus.PENDING 
+    }
+    var selectedFilter by remember { mutableStateOf<ReservationStatus?>(null) }
+
+    val filteredList = remember(selectedFilter, allReservations.size) {
+        if (selectedFilter == null) allReservations
+        else allReservations.filter { it.status == selectedFilter }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().background(LightLavender).padding(16.dp)) {
+        Text("Reservation Logs", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DeepNavy, modifier = Modifier.padding(bottom = 16.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChipItem("All", selectedFilter == null) { selectedFilter = null }
+            FilterChipItem("Active", selectedFilter == ReservationStatus.ACTIVE) { selectedFilter = ReservationStatus.ACTIVE }
+            FilterChipItem("Rejected", selectedFilter == ReservationStatus.REJECTED) { selectedFilter = ReservationStatus.REJECTED }
+            FilterChipItem("Completed", selectedFilter == ReservationStatus.COMPLETED) { selectedFilter = ReservationStatus.COMPLETED }
+        }
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
+            items(filteredList) { item ->
+                AdminLogCard(item)
+            }
+            if (filteredList.isEmpty()) {
+                item {
+                    Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No logs found", color = MediumGray)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminLogCard(reservation: ReservationItem) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(reservation.title, fontWeight = FontWeight.Bold, color = DeepNavy)
+                    Text("Reserved by: ${reservation.reservedBy}", fontSize = 12.sp, color = DeepNavy.copy(alpha = 0.7f))
+                    Text("${reservation.date} • ${reservation.time}", fontSize = 12.sp, color = MediumGray)
+                }
+                Surface(color = reservation.status.color.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
+                    Text(reservation.status.displayName, color = reservation.status.color, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (reservation.status == ReservationStatus.REJECTED && !reservation.rejectionReason.isNullOrEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                Spacer(Modifier.height(8.dp))
+                Text("Reason: ${reservation.rejectionReason}", color = Color(0xFFC0392B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+// --- 6. RESERVATIONS HISTORY SCREEN (USER) ---
 
 @Composable
 fun Reservations(user: User, viewModel: ReservationViewModel) {
-    // Filter by the logged-in user's name
     val allReservations = viewModel.reservations.filter { it.reservedBy == user.name }
     var selectedFilter by remember { mutableStateOf<ReservationStatus?>(null) }
 
@@ -464,7 +576,7 @@ fun Reservations(user: User, viewModel: ReservationViewModel) {
     }
 }
 
-// --- 6. UI COMPONENTS & HELPERS ---
+// --- 7. UI COMPONENTS & HELPERS ---
 
 @Composable
 fun ReservationCard(reservation: ReservationItem) {
@@ -473,13 +585,21 @@ fun ReservationCard(reservation: ReservationItem) {
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
-        Row(Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(reservation.title, fontWeight = FontWeight.Bold, color = DeepNavy)
-                Text("${reservation.date} • ${reservation.time}", fontSize = 13.sp, color = MediumGray)
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(reservation.title, fontWeight = FontWeight.Bold, color = DeepNavy)
+                    Text("${reservation.date} • ${reservation.time}", fontSize = 13.sp, color = MediumGray)
+                }
+                Surface(color = reservation.status.color.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
+                    Text(reservation.status.displayName, color = reservation.status.color, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
             }
-            Surface(color = reservation.status.color.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
-                Text(reservation.status.displayName, color = reservation.status.color, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            if (reservation.status == ReservationStatus.REJECTED && !reservation.rejectionReason.isNullOrEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                Spacer(Modifier.height(8.dp))
+                Text("Reason: ${reservation.rejectionReason}", color = Color(0xFFC0392B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
         }
     }

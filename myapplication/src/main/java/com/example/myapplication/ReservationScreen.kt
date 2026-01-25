@@ -376,55 +376,50 @@ fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
                     }
                 }
 
-                // Schedule Button - REMOVED FROM ADMIN SIDE ONLY
-                if (user.role != "Admin") {
-                    // Disable button if date is in the past OR it's today and all slots are gone
-                    val isPastDate = isDateInPast(selectedYear, selectedMonth, selectedDate)
-                    val today = Calendar.getInstance(phTimeZone)
-                    val isToday = selectedYear == today.get(Calendar.YEAR) && 
-                                  selectedMonth == today.get(Calendar.MONTH) && 
-                                  selectedDate == today.get(Calendar.DAY_OF_MONTH)
-                    
-                    // Logic: If it's today, check if any slots are still available
-                    var anySlotsAvailable = true
-                    if (isToday) {
-                        anySlotsAvailable = timeSlots.any { slot ->
-                            val endTimeStr = slot.split(" - ")[1]
-                            val endMinutes = timeToMinutes(endTimeStr)
-                            val currentMinutes = today.get(Calendar.HOUR_OF_DAY) * 60 + today.get(Calendar.MINUTE)
-                            // Reservable if current time is before the end of the slot
-                            endMinutes > currentMinutes
-                        }
+                // Schedule Button
+                val isPastDate = isDateInPast(selectedYear, selectedMonth, selectedDate)
+                val today = Calendar.getInstance(phTimeZone)
+                val isToday = selectedYear == today.get(Calendar.YEAR) && 
+                              selectedMonth == today.get(Calendar.MONTH) && 
+                              selectedDate == today.get(Calendar.DAY_OF_MONTH)
+                
+                var anySlotsAvailable = true
+                if (isToday) {
+                    anySlotsAvailable = timeSlots.any { slot ->
+                        val endTimeStr = slot.split(" - ")[1]
+                        val endMinutes = timeToMinutes(endTimeStr)
+                        val currentMinutes = today.get(Calendar.HOUR_OF_DAY) * 60 + today.get(Calendar.MINUTE)
+                        endMinutes > currentMinutes
                     }
+                }
 
-                    val canSchedule = !isPastDate && anySlotsAvailable
-                    
-                    Button(
-                        onClick = { if (canSchedule) showScheduleDialog = true },
-                        enabled = canSchedule,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (!canSchedule) Color.LightGray else DarkBlueGray,
-                            disabledContainerColor = Color.LightGray
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Event,
-                            contentDescription = null,
-                            tint = if (!canSchedule) Color.Gray else Color.White
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (!canSchedule) "No Available Slots" else "Schedule Facility",
-                            color = if (!canSchedule) Color.Gray else Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    }
+                val canSchedule = !isPastDate && anySlotsAvailable
+                
+                Button(
+                    onClick = { if (canSchedule) showScheduleDialog = true },
+                    enabled = canSchedule,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (!canSchedule) Color.LightGray else DarkBlueGray,
+                        disabledContainerColor = Color.LightGray
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Event,
+                        contentDescription = null,
+                        tint = if (!canSchedule) Color.Gray else Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (!canSchedule) "No Available Slots" else "Schedule Facility",
+                        color = if (!canSchedule) Color.Gray else Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -643,27 +638,47 @@ fun ScheduleFacilityDialog(
 
     val formattedDate = String.format(Locale.US, "%04d-%02d-%02d", selectedYear, selectedMonth + 1, selectedDate)
 
-    if (showPaymentDialog) {
+    fun confirmReservation(proofUri: String? = null) {
         val sortedSlots = selectedTimeSlots.toList().sortedBy { timeToMinutes(it.split(" - ")[0]) }
         val startT = sortedSlots.first().split(" - ").first()
         val endT = sortedSlots.last().split(" - ").last()
         val displayDate = String.format(Locale.US, "%s %d, %d", monthNames[selectedMonth], selectedDate, selectedYear)
 
+        if (user.role == "Admin") {
+            // Admin reservation logic: Auto-active
+            val newItem = ReservationItem(
+                title = selectedFacility!!.name,
+                date = displayDate,
+                time = "$startT - $endT",
+                status = ReservationStatus.ACTIVE,
+                reservedBy = user.name,
+                contact = phoneNumber,
+                purpose = purpose,
+                formattedDate = formattedDate,
+                paymentProofUri = null
+            )
+            viewModel.addReservationDirect(context, newItem)
+            onDismiss()
+        } else {
+            // Homeowner logic
+            viewModel.addReservation(
+                context = context,
+                title = selectedFacility!!.name,
+                date = displayDate,
+                formattedDate = formattedDate,
+                time = "$startT - $endT",
+                user = user.name,
+                phone = phoneNumber,
+                note = purpose,
+                paymentProof = proofUri
+            )
+            onDismiss()
+        }
+    }
+
+    if (showPaymentDialog) {
         PaymentConfirmationDialog(
-            onConfirm = { proofUri ->
-                viewModel.addReservation(
-                    context = context,
-                    title = selectedFacility!!.name,
-                    date = displayDate,
-                    formattedDate = formattedDate,
-                    time = "$startT - $endT",
-                    user = user.name,
-                    phone = phoneNumber,
-                    note = purpose,
-                    paymentProof = proofUri
-                )
-                onDismiss()
-            },
+            onConfirm = { proofUri -> confirmReservation(proofUri) },
             onCancel = { showPaymentDialog = false }
         )
     }
@@ -759,7 +774,6 @@ fun ScheduleFacilityDialog(
                 OutlinedTextField(
                     value = phoneNumber,
                     onValueChange = {
-                        // Strict 11-digit limit
                         if (it.length <= 11 && it.all { char -> char.isDigit() }) {
                             phoneNumber = it
                         }
@@ -820,13 +834,10 @@ fun ScheduleFacilityDialog(
                         ) {
                             items(timeSlots) { slot ->
                                 val isSelected = selectedTimeSlots.contains(slot)
-
-                                // Precise overlap logic
                                 val slotTimes = slot.split(" - ")
                                 val sStart = timeToMinutes(slotTimes[0])
                                 val sEnd = timeToMinutes(slotTimes[1])
 
-                                // NEW: Check if this slot is in the past for the current day using Philippine Time
                                 val today = Calendar.getInstance(phTimeZone)
                                 val isToday = selectedYear == today.get(Calendar.YEAR) && 
                                               selectedMonth == today.get(Calendar.MONTH) && 
@@ -834,7 +845,6 @@ fun ScheduleFacilityDialog(
                                 
                                 val isPastSlot = if (isToday) {
                                     val currentMinutes = today.get(Calendar.HOUR_OF_DAY) * 60 + today.get(Calendar.MINUTE)
-                                    // Modified: Disables ONLY IF the current time is AT OR PAST the END of the slot
                                     currentMinutes >= sEnd
                                 } else false
 
@@ -918,7 +928,11 @@ fun ScheduleFacilityDialog(
                             } else if (phoneNumber.length < 11) {
                                 errorMessage = "Phone number must be exactly 11 digits"
                             } else {
-                                showPaymentDialog = true
+                                if (user.role == "Admin") {
+                                    confirmReservation()
+                                } else {
+                                    showPaymentDialog = true
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f).height(45.dp),
@@ -950,7 +964,7 @@ fun PaymentConfirmationDialog(
     Dialog(onDismissRequest = onCancel) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = Color(0xFFF3EFFF), // Light lavender background like reference
+            color = Color(0xFFF3EFFF), 
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
         ) {
             Column(
@@ -1045,7 +1059,7 @@ fun PaymentConfirmationDialog(
                         enabled = selectedImageUri != null,
                         modifier = Modifier.weight(2f).heightIn(min = 48.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFD1CBE9), // Light purple button
+                            containerColor = Color(0xFFD1CBE9), 
                             disabledContainerColor = Color.LightGray.copy(alpha = 0.5f)
                         ),
                         shape = RoundedCornerShape(24.dp)

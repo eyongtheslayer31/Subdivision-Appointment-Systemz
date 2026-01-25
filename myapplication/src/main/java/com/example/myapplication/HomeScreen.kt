@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,14 +28,50 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.Locale
 import java.util.Calendar
+import java.text.SimpleDateFormat
 
 @Composable
-fun HomeScreen(user: User) {
+fun HomeScreen(user: User, reservationViewModel: ReservationViewModel = viewModel()) {
     var selectedEvent by remember { mutableStateOf<CommunityEvent?>(null) }
     var showAddEventDialog by remember { mutableStateOf(false) }
+    var showNotifications by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    val myRecentUpdates = reservationViewModel.reservations.filter { 
+        it.reservedBy == user.name && (it.status == ReservationStatus.ACTIVE || it.status == ReservationStatus.REJECTED)
+    }
+
+    // Weekly Stats for Admin
+    val isAdmin = user.role == "Admin"
+    val weeklyStats = if (isAdmin) {
+        val calendar = Calendar.getInstance()
+        calendar.set(Calendar.DAY_OF_WEEK, calendar.firstDayOfWeek)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        val weekStart = calendar.time
+        
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        
+        val weeklyReservations = reservationViewModel.reservations.filter {
+            try {
+                val date = sdf.parse(it.formattedDate)
+                date != null && !date.before(weekStart)
+            } catch (e: Exception) {
+                false
+            }
+        }
+        
+        object {
+            val active = weeklyReservations.count { it.status == ReservationStatus.ACTIVE }
+            val rejected = weeklyReservations.count { it.status == ReservationStatus.REJECTED }
+            val completed = weeklyReservations.count { it.status == ReservationStatus.COMPLETED }
+            val totalAccounts = UserRepository.users.size
+        }
+    } else null
 
     val scrollPercentage by remember {
         derivedStateOf {
@@ -80,26 +117,75 @@ fun HomeScreen(user: User) {
             modifier = Modifier.fillMaxSize()
         ) {
             item {
-                Column(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Home",
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = DeepNavy
-                    )
+                    Column {
+                        Text(
+                            text = "Home",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DeepNavy
+                        )
+                        Text(
+                            text = if (isAdmin) "Admin Dashboard" else "Community Events",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MediumGray
+                        )
+                    }
+                    
+                    if (!isAdmin) {
+                        BadgedBox(
+                            badge = {
+                                if (myRecentUpdates.isNotEmpty()) {
+                                    Badge { Text(myRecentUpdates.size.toString()) }
+                                }
+                            }
+                        ) {
+                            IconButton(onClick = { showNotifications = true }) {
+                                Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = DeepNavy)
+                            }
+                        }
+                    }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Community Events",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MediumGray
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
+            if (isAdmin && weeklyStats != null) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        Text(
+                            text = "Weekly Overview",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DeepNavy,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            StatCard("Active", weeklyStats.active.toString(), SuccessGreen, Modifier.weight(1f))
+                            StatCard("Accounts", weeklyStats.totalAccounts.toString(), Color(0xFF2980B9), Modifier.weight(1f))
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            StatCard("Completed", weeklyStats.completed.toString(), Color(0xFF2980B9), Modifier.weight(1f))
+                            StatCard("Rejected", weeklyStats.rejected.toString(), Color(0xFFC0392B), Modifier.weight(1f))
+                        }
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        Text(
+                            text = "Events",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DeepNavy,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -136,7 +222,7 @@ fun HomeScreen(user: User) {
             }
         }
 
-        if (user.role == "Admin") {
+        if (isAdmin) {
             LargeFloatingActionButton(
                 onClick = { showAddEventDialog = true },
                 modifier = Modifier
@@ -160,6 +246,93 @@ fun HomeScreen(user: User) {
         if (showAddEventDialog) {
             AddEventDialog(
                 onDismiss = { showAddEventDialog = false }
+            )
+        }
+
+        if (showNotifications) {
+            NotificationsDialog(
+                updates = myRecentUpdates,
+                onDismiss = { showNotifications = false }
+            )
+        }
+    }
+}
+
+@Composable
+fun StatCard(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(text = label, fontSize = 12.sp, color = MediumGray, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = value, fontSize = 24.sp, color = color, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+fun NotificationsDialog(updates: List<ReservationItem>, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Notifications", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DeepNavy)
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null) }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (updates.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No new notifications", color = MediumGray)
+                    }
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(updates) { item ->
+                            NotificationItem(item)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun NotificationItem(item: ReservationItem) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (item.status == ReservationStatus.ACTIVE) SuccessGreen.copy(alpha = 0.1f) else Color(0xFFC0392B).copy(alpha = 0.1f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = if (item.status == ReservationStatus.ACTIVE) "Reservation Approved!" else "Reservation Rejected",
+                fontWeight = FontWeight.Bold,
+                color = if (item.status == ReservationStatus.ACTIVE) SuccessGreen else Color(0xFFC0392B)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Your request for ${item.title} on ${item.date} has been ${item.status.displayName.lowercase()}.",
+                fontSize = 13.sp,
+                color = DeepNavy.copy(alpha = 0.8f)
             )
         }
     }
@@ -466,8 +639,7 @@ fun EventScheduleDialog(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                    verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = event.title,
                         fontSize = 24.sp,
