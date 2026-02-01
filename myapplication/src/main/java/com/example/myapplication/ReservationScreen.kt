@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.FilterList
@@ -61,11 +62,9 @@ fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
     val phTimeZone = TimeZone.getTimeZone("Asia/Manila")
     val phCalendar = Calendar.getInstance(phTimeZone)
 
-    // HARDCODED TO FEBRUARY 2026 FOR DEMONSTRATION
-    // Set default selection to February 1, 2026
-    var selectedDate by remember { mutableIntStateOf(1) } 
-    var selectedMonth by remember { mutableIntStateOf(1) } // 1 = February
-    var selectedYear by remember { mutableIntStateOf(2026) }
+    var selectedDate by remember { mutableIntStateOf(phCalendar.get(Calendar.DAY_OF_MONTH)) }
+    var selectedMonth by remember { mutableIntStateOf(phCalendar.get(Calendar.MONTH)) }
+    var selectedYear by remember { mutableIntStateOf(phCalendar.get(Calendar.YEAR)) }
     
     var viewMode by remember { mutableStateOf("month") }
     var showEventDetails by remember { mutableStateOf(false) }
@@ -110,13 +109,11 @@ fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
     }
 
     fun isDateInPast(year: Int, month: Int, day: Int): Boolean {
-        // For demonstration purposes, we consider any date before Feb 1, 2026 as past
-        val demoToday = Calendar.getInstance(phTimeZone)
-        demoToday.set(2026, 1, 1, 0, 0, 0)
-        
+        val today = Calendar.getInstance(phTimeZone)
         val compareDate = Calendar.getInstance(phTimeZone)
+        // Check if the entire day is in the past
         compareDate.set(year, month, day, 23, 59, 59)
-        return compareDate.before(demoToday)
+        return compareDate.before(today)
     }
 
     Column(modifier = Modifier.fillMaxSize().background(LightLavender)) {
@@ -240,16 +237,22 @@ fun Reservation(user: User, viewModel: ReservationViewModel = viewModel()) {
 
             if (user.role != "Admin") {
                 val isSelectedPast = isDateInPast(selectedYear, selectedMonth, selectedDate)
-                // For demo, we treat Feb 1, 2026 as today
-                val isToday = selectedYear == 2026 && selectedMonth == 1 && selectedDate == 1
+                val today = Calendar.getInstance(phTimeZone)
+                val isToday = selectedYear == today.get(Calendar.YEAR) && 
+                              selectedMonth == today.get(Calendar.MONTH) && 
+                              selectedDate == today.get(Calendar.DAY_OF_MONTH)
                 
                 var anySlotsAvailable = true
                 if (isToday) {
-                    // In demo mode, all slots are available on "today" (Feb 1)
-                    anySlotsAvailable = true 
+                    anySlotsAvailable = timeSlots.any { slot ->
+                        val endTimeStr = slot.split(" - ")[1]
+                        val endMinutes = timeToMinutes(endTimeStr)
+                        val currentMinutes = today.get(Calendar.HOUR_OF_DAY) * 60 + today.get(Calendar.MINUTE)
+                        endMinutes > currentMinutes
+                    }
                 }
 
-                val canSchedule = !isSelectedPast
+                val canSchedule = !isSelectedPast && anySlotsAvailable
                 
                 Button(
                     onClick = { if (canSchedule) showScheduleDialog = true },
@@ -421,9 +424,15 @@ fun ScheduleFacilityDialog(user: User, viewModel: ReservationViewModel, selected
                                 val slotTimes = slot.split(" - ")
                                 val sStart = timeToMinutes(slotTimes[0]); val sEnd = timeToMinutes(slotTimes[1])
                                 
-                                // For demo, we treat Feb 1, 2026 as today
-                                val isToday = selectedYear == 2026 && selectedMonth == 1 && selectedDate == 1
-                                val isPastSlot = false // Always available in demo for Feb 1
+                                val today = Calendar.getInstance(phTimeZone)
+                                val isToday = selectedYear == today.get(Calendar.YEAR) && 
+                                              selectedMonth == today.get(Calendar.MONTH) && 
+                                              selectedDate == today.get(Calendar.DAY_OF_MONTH)
+                                
+                                val isPastSlot = if (isToday) {
+                                    val currentMinutes = today.get(Calendar.HOUR_OF_DAY) * 60 + today.get(Calendar.MINUTE)
+                                    currentMinutes >= sEnd
+                                } else false
                                 
                                 val isTaken = if (selectedFacility != null) { calendarEvents.any { e -> e.venue == selectedFacility?.name && e.date == formattedDate && maxOf(sStart, timeToMinutes(e.startTime)) < minOf(sEnd, timeToMinutes(e.endTime)) } } else false
                                 Box(modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(when { isTaken || isPastSlot -> Color.LightGray.copy(alpha = 0.5f); isSelected -> Color(0xFF1E88E5); else -> Color(0xFFE0F2F1) }).clickable(enabled = !isTaken && !isPastSlot) { selectedTimeSlots = if (isSelected) selectedTimeSlots - slot else selectedTimeSlots + slot; errorMessage = "" }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {

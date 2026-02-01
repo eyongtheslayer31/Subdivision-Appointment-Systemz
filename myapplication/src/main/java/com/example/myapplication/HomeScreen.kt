@@ -138,7 +138,7 @@ fun HomeScreen(user: User, reservationViewModel: ReservationViewModel = viewMode
             }
 
             items(sampleEvents) { event ->
-                EventCard(event = event, onClick = { selectedEvent = event }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
+                EventCard(event = event, onClick = { selectedEvent = event }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp) )
             }
             item { Spacer(modifier = Modifier.height(100.dp)) }
         }
@@ -209,6 +209,7 @@ fun AddEventDialog(reservationViewModel: ReservationViewModel, onDismiss: () -> 
     val phTimeZone = TimeZone.getTimeZone("Asia/Manila")
     val now = remember { Calendar.getInstance(phTimeZone) }
     val currentYear = now.get(Calendar.YEAR)
+    val monthNames = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
     
     var selectedFacility by remember { mutableStateOf<Facility?>(null) }
     var selectedTimeSlots by remember { mutableStateOf(setOf<String>()) }
@@ -216,29 +217,26 @@ fun AddEventDialog(reservationViewModel: ReservationViewModel, onDismiss: () -> 
     var errorMessage by remember { mutableStateOf("") }
     var expandedVenue by remember { mutableStateOf(false) }
     
-    // For the demo, we are showing February
-    val targetMonth = Calendar.FEBRUARY 
+    val currentMonth = now.get(Calendar.MONTH)
+    val daysInMonth = now.getActualMaximum(Calendar.DAY_OF_MONTH)
     
     val availableDatesInfo = remember(now) {
-        (1..28).map { day ->
-            // TRUE REAL-TIME CHECK: 
-            // Use currentYear instead of hardcoded 2026 to make 'isPast' actually work
+        (1..daysInMonth).map { day ->
             val dateCal = Calendar.getInstance(phTimeZone).apply {
-                set(currentYear, targetMonth, day, 23, 59, 59)
+                set(currentYear, currentMonth, day, 23, 59, 59)
             }
             val isPast = dateCal.before(now)
             
             val displayCal = Calendar.getInstance(phTimeZone).apply {
-                set(currentYear, targetMonth, day)
+                set(currentYear, currentMonth, day)
             }
             val dayName = displayCal.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.US) ?: ""
-            val fullDate = "February $day, $currentYear"
+            val fullDate = "${monthNames[currentMonth]} $day, $currentYear"
             
             Triple(day, dayName, fullDate) to isPast
         }
     }
     
-    // Default selection to the first available (non-past) date
     var selectedDate by remember { 
         val firstValid = availableDatesInfo.find { !it.second }?.first?.third ?: availableDatesInfo.first().first.third
         mutableStateOf(firstValid) 
@@ -275,7 +273,7 @@ fun AddEventDialog(reservationViewModel: ReservationViewModel, onDismiss: () -> 
                             Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                 Text(text = data.second.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (isPast) Color.Gray else if (isSelected) Color.White else MediumGray)
                                 Text(text = data.first.toString(), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = if (isPast) Color.Gray else if (isSelected) Color.White else DeepNavy)
-                                Text(text = "Feb", fontSize = 10.sp, color = if (isPast) Color.Gray else if (isSelected) Color.White.copy(alpha = 0.8f) else MediumGray)
+                                Text(text = monthNames[currentMonth].substring(0, 3), fontSize = 10.sp, color = if (isPast) Color.Gray else if (isSelected) Color.White.copy(alpha = 0.8f) else MediumGray)
                             }
                         }
                     }
@@ -301,12 +299,16 @@ fun AddEventDialog(reservationViewModel: ReservationViewModel, onDismiss: () -> 
                     items(timeSlots) { slot ->
                         val isSelected = selectedTimeSlots.contains(slot)
                         
-                        // STRICT REAL-TIME SLOT VALIDATION
+                        // Check if past or ALREADY OCCUPIED BY A RESERVATION
+                        val slotTimes = slot.split(" - ")
+                        val sStart = timeToMinutes(slotTimes[0])
+                        val sEnd = timeToMinutes(slotTimes[1])
+                        
                         val isPastSlot = try {
                             val dayNum = selectedDate.split(" ")[1].replace(",", "").toInt()
                             val slotEndStr = slot.split(" - ")[1]
                             val slotCal = Calendar.getInstance(phTimeZone).apply {
-                                set(currentYear, Calendar.FEBRUARY, dayNum)
+                                set(currentYear, currentMonth, dayNum)
                                 val timeParts = slotEndStr.replace("NN", "PM").trim().split(" ")
                                 val hm = timeParts[0].split(":")
                                 var h = hm[0].toInt()
@@ -319,19 +321,34 @@ fun AddEventDialog(reservationViewModel: ReservationViewModel, onDismiss: () -> 
                             }
                             slotCal.before(now)
                         } catch(_: Exception) { false }
+
+                        val formattedDate = try {
+                            val dayNum = selectedDate.split(" ")[1].replace(",", "").toInt()
+                            String.format(Locale.US, "%04d-%02d-%02d", currentYear, currentMonth + 1, dayNum)
+                        } catch (_: Exception) { "" }
+
+                        val isTaken = if (selectedFacility != null) {
+                            reservationViewModel.reservations.any { e ->
+                                e.title == selectedFacility?.name &&
+                                e.formattedDate == formattedDate &&
+                                e.status != ReservationStatus.REJECTED &&
+                                !e.isDeletedByAdmin &&
+                                maxOf(sStart, timeToMinutes(e.time.split(" - ")[0])) < minOf(sEnd, timeToMinutes(e.time.split(" - ")[1]))
+                            }
+                        } else false
                         
-                        Box(modifier = Modifier.height(50.dp).clip(RoundedCornerShape(8.dp)).background(if (isPastSlot) Color(0xFFE0E0E0).copy(alpha = 0.5f) else if (isSelected) Color(0xFF1E88E5) else Color(0xFFE8EBFA)).clickable(enabled = !isPastSlot) { selectedTimeSlots = if (isSelected) selectedTimeSlots - slot else selectedTimeSlots + slot }.padding(4.dp), contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.height(50.dp).clip(RoundedCornerShape(8.dp)).background(if (isPastSlot || isTaken) Color(0xFFE0E0E0).copy(alpha = 0.5f) else if (isSelected) Color(0xFF1E88E5) else Color(0xFFE8EBFA)).clickable(enabled = !isPastSlot && !isTaken) { selectedTimeSlots = if (isSelected) selectedTimeSlots - slot else selectedTimeSlots + slot }.padding(4.dp), contentAlignment = Alignment.Center) {
                             val times = slot.split(" - ")
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(times[0], fontSize = 8.sp, color = if (isPastSlot) Color.Gray else if (isSelected) Color.White else DeepNavy, textAlign = TextAlign.Center)
-                                Text("to ${times[1]}", fontSize = 8.sp, color = if (isPastSlot) Color.Gray else if (isSelected) Color.White else DeepNavy, textAlign = TextAlign.Center)
+                                Text(times[0], fontSize = 8.sp, color = if (isPastSlot || isTaken) Color.Gray else if (isSelected) Color.White else DeepNavy, textAlign = TextAlign.Center)
+                                Text("to ${times[1]}", fontSize = 8.sp, color = if (isPastSlot || isTaken) Color.Gray else if (isSelected) Color.White else DeepNavy, textAlign = TextAlign.Center)
                             }
                         }
                     }
                 }
                 if (errorMessage.isNotEmpty()) { Text(errorMessage, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp)) }
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = { if (selectedFacility != null && selectedTimeSlots.isNotEmpty() && purpose.isNotEmpty()) { val sortedSlots = selectedTimeSlots.toList().sortedBy { timeToMinutes(it.split(" - ")[0]) }; val startT = sortedSlots.first().split(" - ").first(); val endT = sortedSlots.last().split(" - ").last(); val newEvent = CommunityEvent(id = sampleEvents.size + 1, title = purpose, timeRange = "$selectedDate, $startT - $endT", description = "Community event at ${selectedFacility!!.name}.", schedules = listOf(EventSchedule(selectedDate, "$startT - $endT", selectedFacility!!.name))); sampleEvents.add(0, newEvent); reservationViewModel.refreshCalendarEvents(); onDismiss() } else { errorMessage = "Please fill all fields" } }, modifier = Modifier.fillMaxWidth().height(54.dp), colors = ButtonDefaults.buttonColors(containerColor = DarkBlueGray), shape = RoundedCornerShape(14.dp)) { Text("Broadcast Event", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                Button(onClick = { if (selectedFacility != null && selectedTimeSlots.isNotEmpty() && purpose.isNotEmpty()) { val sortedSlots = selectedTimeSlots.toList().sortedBy { timeToMinutes(it.split(" - ")[0]) }; val startT = sortedSlots.first().split(" - ").first(); val endT = sortedSlots.last().split(" - ").last(); val newEvent = CommunityEvent(id = sampleEvents.size + 1, title = purpose, timeRange = "$selectedDate, $startT - $endT", description = "Community event at ${selectedFacility!!.name}.", schedules = listOf(EventSchedule(selectedDate, "$startT - $endT", selectedFacility!!.name))); sampleEvents.add(0, newEvent); reservationViewModel.refreshCalendarEvents(); onDismiss() } else { errorMessage = "Please fill all fields" } }, modifier = Modifier.fillMaxWidth().height(54.dp), colors = ButtonDefaults.buttonColors(containerColor = DarkBlueGray), shape = RoundedCornerShape(14.dp) ) { Text("Broadcast Event", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
