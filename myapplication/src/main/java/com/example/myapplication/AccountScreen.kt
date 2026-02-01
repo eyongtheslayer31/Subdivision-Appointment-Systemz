@@ -6,8 +6,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Person
@@ -33,55 +35,83 @@ import kotlinx.coroutines.delay
 fun Account(user: User) {
     var showPasswordDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
     
-    // Launcher for picking a profile picture
+    // Local state for the newly selected image
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    
+    // The Save button only appears if a new image is selected
+    val hasPictureChange = selectedImageUri != null
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            // Copy image to internal storage and persist the new local URI
-            UserRepository.saveProfileImage(context, user.username, it)
-        }
+        selectedImageUri = uri
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LightLavender)
+            .verticalScroll(scrollState)
             .padding(20.dp)
     ) {
-        Text(
-            text = "My Account",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = DeepNavy,
-            modifier = Modifier.padding(bottom = 20.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "My Account",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = DeepNavy
+            )
+            
+            if (hasPictureChange) {
+                Button(
+                    onClick = {
+                        selectedImageUri?.let { uri ->
+                            UserRepository.saveProfileImage(context, user.username, uri)
+                            selectedImageUri = null // Button disappears immediately
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text("Save Photo", fontSize = 12.sp)
+                }
+            }
+        }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFFE8EBFA)
-            ),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(20.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 20.dp)
+            Column(modifier = Modifier.padding(20.dp)) {
+                // Profile Picture Section
+                Box(
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 24.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(80.dp)
+                            .size(100.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE53935))
-                            .clickable { launcher.launch("image/*") },
+                            .background(DarkBlueGray),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (user.profilePictureUri != null) {
+                        if (selectedImageUri != null) {
+                            AsyncImage(
+                                model = selectedImageUri,
+                                contentDescription = "Preview Profile Picture",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else if (user.profilePictureUri != null) {
                             AsyncImage(
                                 model = user.profilePictureUri,
                                 contentDescription = "Profile Picture",
@@ -89,157 +119,84 @@ fun Account(user: User) {
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Text(
-                                text = "👤",
-                                fontSize = 40.sp
-                            )
+                            Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(50.dp))
                         }
-                        
-                        // Small camera icon overlay
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(24.dp)
-                                .background(Color.White, CircleShape)
-                                .padding(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = "Change Picture",
-                                tint = DeepNavy,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column {
-                        Text(
-                            text = user.name,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = DeepNavy
-                        )
-                        Text(
-                            text = user.role,
-                            fontSize = 14.sp,
-                            color = MediumGray
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(Color(0xFFB5B9D8))
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = DeepNavy,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Login Credentials",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = DeepNavy
-                        )
                     }
                     
-                    // Change Password Button (Users only)
-                    if (user.role != "Admin") {
+                    // Camera Button overlay
+                    IconButton(
+                        onClick = { launcher.launch("image/*") },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(32.dp)
+                            .background(Color.White, CircleShape)
+                            .padding(4.dp)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, "Change Picture", tint = DeepNavy, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text("Login Credentials", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DeepNavy)
+                Spacer(Modifier.height(16.dp))
+
+                AccountReadOnlyField(label = "Username", value = user.username)
+                Spacer(Modifier.height(12.dp))
+                AccountReadOnlyField(label = "Email Address", value = user.email)
+                Spacer(Modifier.height(12.dp))
+                
+                // Password row
+                Column {
+                    Text("Password", fontSize = 12.sp, color = MediumGray)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("••••••••", modifier = Modifier.weight(1f), color = DeepNavy)
                         TextButton(onClick = { showPasswordDialog = true }) {
-                            Text("Change Password", color = DarkBlueGray, fontSize = 12.sp)
+                            Text("Change", color = DarkBlueGray, fontSize = 13.sp)
                         }
                     }
                 }
 
-                AccountTextField(
-                    label = "Username",
-                    value = user.username
-                )
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                Spacer(Modifier.height(24.dp))
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Text("Personal Information", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DeepNavy)
+                Spacer(Modifier.height(16.dp))
 
-                AccountTextField(
-                    label = "Email",
-                    value = user.email
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                AccountPasswordField(
-                    label = "Password",
-                    value = user.password
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(Color(0xFFB5B9D8))
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = DeepNavy,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Personal Information",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = DeepNavy
-                    )
-                }
-
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFD8DBFA).copy(alpha = 0.5f)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        PersonalInfoRow("Name:", user.name)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        PersonalInfoRow("Contact Num:", user.contactNum)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        PersonalInfoRow("Address:", user.address)
-                    }
-                }
+                AccountReadOnlyField(label = "Full Name", value = user.name)
+                Spacer(Modifier.height(12.dp))
+                AccountReadOnlyField(label = "Contact Number", value = user.contactNum)
+                Spacer(Modifier.height(12.dp))
+                AccountReadOnlyField(label = "Address", value = user.address)
+                
+                Spacer(Modifier.height(20.dp))
             }
         }
+        
+        Spacer(Modifier.height(40.dp))
     }
 
     if (showPasswordDialog) {
-        ChangePasswordDialog(
-            user = user,
-            onDismiss = { showPasswordDialog = false }
-        )
+        ChangePasswordDialog(user = user, onDismiss = { showPasswordDialog = false })
+    }
+}
+
+@Composable
+fun AccountReadOnlyField(label: String, value: String) {
+    Column {
+        Text(text = label, fontSize = 12.sp, color = MediumGray, modifier = Modifier.padding(bottom = 4.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFFF5F5F5),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray)
+        ) {
+            Text(
+                text = value,
+                modifier = Modifier.padding(16.dp),
+                fontSize = 14.sp,
+                color = MediumGray
+            )
+        }
     }
 }
 
@@ -253,7 +210,6 @@ fun ChangePasswordDialog(user: User, onDismiss: () -> Unit) {
     var errorMessage by remember { mutableStateOf("") }
     var successMessage by remember { mutableStateOf("") }
 
-    // Automatically close dialog after success
     if (successMessage.isNotEmpty()) {
         LaunchedEffect(Unit) {
             delay(1500)
@@ -340,100 +296,5 @@ fun ChangePasswordDialog(user: User, onDismiss: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-@Composable
-fun AccountTextField(
-    label: String,
-    value: String
-) {
-    Column {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = DeepNavy.copy(alpha = 0.7f),
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
-            color = Color(0xFFD8DBFA).copy(alpha = 0.5f)
-        ) {
-            Text(
-                text = value,
-                fontSize = 14.sp,
-                color = DeepNavy,
-                modifier = Modifier.padding(12.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun AccountPasswordField(
-    label: String,
-    value: String
-) {
-    var showPassword by remember { mutableStateOf(false) }
-
-    Column {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = DeepNavy.copy(alpha = 0.7f),
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
-            color = Color(0xFFD8DBFA).copy(alpha = 0.5f)
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (showPassword) value else "••••••••••••••••",
-                    fontSize = 14.sp,
-                    color = DeepNavy
-                )
-                IconButton(
-                    onClick = { showPassword = !showPassword },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (showPassword) "Hide password" else "Show password",
-                        tint = DeepNavy,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PersonalInfoRow(
-    label: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            color = DeepNavy.copy(alpha = 0.7f)
-        )
-        Text(
-            text = value,
-            fontSize = 14.sp,
-            color = DeepNavy,
-            fontWeight = FontWeight.Normal
-        )
     }
 }

@@ -643,6 +643,9 @@ fun ScheduleFacilityDialog(
         val startT = sortedSlots.first().split(" - ").first()
         val endT = sortedSlots.last().split(" - ").last()
         val displayDate = String.format(Locale.US, "%s %d, %d", monthNames[selectedMonth], selectedDate, selectedYear)
+        
+        // Calculate Cost
+        val totalCost = selectedTimeSlots.size * 500.0
 
         if (user.role == "Admin") {
             // Admin reservation logic: Auto-active
@@ -655,7 +658,8 @@ fun ScheduleFacilityDialog(
                 contact = phoneNumber,
                 purpose = purpose,
                 formattedDate = formattedDate,
-                paymentProofUri = null
+                paymentProofUri = null,
+                cost = totalCost
             )
             viewModel.addReservationDirect(context, newItem)
             onDismiss()
@@ -670,7 +674,8 @@ fun ScheduleFacilityDialog(
                 user = user.name,
                 phone = phoneNumber,
                 note = purpose,
-                paymentProof = proofUri
+                paymentProof = proofUri,
+                cost = totalCost
             )
             onDismiss()
         }
@@ -678,6 +683,7 @@ fun ScheduleFacilityDialog(
 
     if (showPaymentDialog) {
         PaymentConfirmationDialog(
+            totalCost = selectedTimeSlots.size * 500.0,
             onConfirm = { proofUri -> confirmReservation(proofUri) },
             onCancel = { showPaymentDialog = false }
         )
@@ -773,9 +779,13 @@ fun ScheduleFacilityDialog(
                 Text("Phone Number", fontSize = 12.sp, color = DeepNavy, fontWeight = FontWeight.Medium)
                 OutlinedTextField(
                     value = phoneNumber,
-                    onValueChange = {
-                        if (it.length <= 11 && it.all { char -> char.isDigit() }) {
-                            phoneNumber = it
+                    onValueChange = { input ->
+                        if (input.all { it.isDigit() } && input.length <= 11) {
+                            phoneNumber = input
+                            // Real-time validation message logic
+                            errorMessage = if (input.isNotEmpty() && !input.startsWith("09")) {
+                                "Invalid format: Must start with 09"
+                            } else ""
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -783,11 +793,12 @@ fun ScheduleFacilityDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color(0xFFE8EBFA),
                         unfocusedContainerColor = Color(0xFFE8EBFA),
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent
+                        focusedBorderColor = if (errorMessage.isNotEmpty()) Color.Red else Color.Transparent,
+                        unfocusedBorderColor = if (errorMessage.isNotEmpty()) Color.Red else Color.Transparent
                     ),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
+                    singleLine = true,
+                    placeholder = { Text("09XXXXXXXXX", fontSize = 14.sp) }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -906,15 +917,12 @@ fun ScheduleFacilityDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f).height(45.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Close", color = Color.DarkGray)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Total Slots: ${selectedTimeSlots.size}", fontSize = 11.sp, color = MediumGray)
+                        Text("Total: ₱${String.format("%.2f", selectedTimeSlots.size * 500.0)}", fontWeight = FontWeight.Bold, color = DeepNavy)
                     }
 
                     Button(
@@ -925,8 +933,8 @@ fun ScheduleFacilityDialog(
                                 errorMessage = "Please select at least one time slot"
                             } else if (phoneNumber.isEmpty()) {
                                 errorMessage = "Please enter contact number"
-                            } else if (phoneNumber.length < 11) {
-                                errorMessage = "Phone number must be exactly 11 digits"
+                            } else if (!phoneNumber.startsWith("09") || phoneNumber.length < 11) {
+                                errorMessage = "Invalid format: Must be 11 digits starting with 09"
                             } else {
                                 if (user.role == "Admin") {
                                     confirmReservation()
@@ -935,7 +943,7 @@ fun ScheduleFacilityDialog(
                                 }
                             }
                         },
-                        modifier = Modifier.weight(1f).height(45.dp),
+                        modifier = Modifier.height(45.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -949,6 +957,7 @@ fun ScheduleFacilityDialog(
 
 @Composable
 fun PaymentConfirmationDialog(
+    totalCost: Double,
     onConfirm: (String?) -> Unit,
     onCancel: () -> Unit
 ) {
@@ -991,6 +1000,23 @@ fun PaymentConfirmationDialog(
                     fontWeight = FontWeight.Bold,
                     color = DeepNavy
                 )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Total Amount Due:", fontSize = 14.sp, color = MediumGray)
+                        Text("₱${String.format("%.2f", totalCost)}", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2E7D32))
+                    }
+                }
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 
