@@ -6,7 +6,8 @@ import org.json.JSONObject
 
 object ReservationRepository {
     private const val PREFS_NAME = "reservation_prefs"
-    private const val KEY_RESERVATIONS = "all_reservations_v2"
+    // NEW KEY FOR DEMONSTRATION DATABASE
+    private const val KEY_RESERVATIONS = "all_reservations_v3"
 
     fun saveReservations(context: Context, reservations: List<ReservationItem>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
