@@ -35,14 +35,19 @@ object UserRepository {
             val savedPassword = prefs.getString("pwd_${user.username}", null)
             val savedProfilePic = prefs.getString("pic_${user.username}", null)
             val savedHistory = prefs.getString("hist_${user.username}", null)
+            val savedName = prefs.getString("name_${user.username}", null)
+            val savedEmail = prefs.getString("email_${user.username}", null)
+            val savedPhone = prefs.getString("phone_${user.username}", null)
+            val savedAddr = prefs.getString("addr_${user.username}", null)
             
             var updatedUser = user
-            if (savedPassword != null) {
-                updatedUser = updatedUser.copy(password = savedPassword)
-            }
-            if (savedProfilePic != null) {
-                updatedUser = updatedUser.copy(profilePictureUri = savedProfilePic)
-            }
+            if (savedPassword != null) updatedUser = updatedUser.copy(password = savedPassword)
+            if (savedProfilePic != null) updatedUser = updatedUser.copy(profilePictureUri = savedProfilePic)
+            if (savedName != null) updatedUser = updatedUser.copy(name = savedName)
+            if (savedEmail != null) updatedUser = updatedUser.copy(email = savedEmail)
+            if (savedPhone != null) updatedUser = updatedUser.copy(contactNum = savedPhone)
+            if (savedAddr != null) updatedUser = updatedUser.copy(address = savedAddr)
+            
             if (savedHistory != null) {
                 val historyList = mutableListOf<String>()
                 val jsonArray = JSONArray(savedHistory)
@@ -52,6 +57,24 @@ object UserRepository {
                 updatedUser = updatedUser.copy(passwordHistory = historyList)
             }
             users[index] = updatedUser
+        }
+    }
+
+    /**
+     * Updates and permanently saves user info.
+     */
+    fun updateUserInfo(context: Context, username: String, name: String, email: String, phone: String, address: String) {
+        val index = users.indexOfFirst { it.username == username }
+        if (index != -1) {
+            users[index] = users[index].copy(name = name, email = email, contactNum = phone, address = address)
+            
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString("name_$username", name)
+                .putString("email_$username", email)
+                .putString("phone_$username", phone)
+                .putString("addr_$username", address)
+                .apply()
         }
     }
 

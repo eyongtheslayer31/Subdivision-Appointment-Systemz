@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -59,7 +60,8 @@ data class ReservationItem(
     val purpose: String = "",
     val formattedDate: String = "",
     val paymentProofUri: String? = null,
-    val rejectionReason: String? = null
+    val rejectionReason: String? = null,
+    val cost: Double = 0.0
 )
 
 // --- 2. SHARED VIEWMODEL ---
@@ -104,7 +106,7 @@ class ReservationViewModel : ViewModel() {
         }
     }
 
-    fun addReservation(context: Context, title: String, date: String, time: String, user: String, phone: String, note: String, formattedDate: String, paymentProof: String?) {
+    fun addReservation(context: Context, title: String, date: String, time: String, user: String, phone: String, note: String, formattedDate: String, paymentProof: String?, cost: Double) {
         val newItem = ReservationItem(
             title = title,
             date = date,
@@ -114,7 +116,8 @@ class ReservationViewModel : ViewModel() {
             contact = phone,
             purpose = note,
             formattedDate = formattedDate,
-            paymentProofUri = paymentProof
+            paymentProofUri = paymentProof,
+            cost = cost
         )
         _reservations.add(0, newItem)
         ReservationRepository.saveReservations(context, _reservations)
@@ -534,6 +537,10 @@ fun AdminLogCard(reservation: ReservationItem) {
                 Spacer(Modifier.height(8.dp))
                 Text("Reason: ${reservation.rejectionReason}", color = Color(0xFFC0392B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(text = "₱${String.format("%.2f", reservation.cost)}", fontWeight = FontWeight.Bold, color = DeepNavy)
+            }
         }
     }
 }
@@ -580,8 +587,12 @@ fun Reservations(user: User, viewModel: ReservationViewModel) {
 
 @Composable
 fun ReservationCard(reservation: ReservationItem) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { isExpanded = !isExpanded },
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -595,13 +606,58 @@ fun ReservationCard(reservation: ReservationItem) {
                     Text(reservation.status.displayName, color = reservation.status.color, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            if (reservation.status == ReservationStatus.REJECTED && !reservation.rejectionReason.isNullOrEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                Spacer(Modifier.height(8.dp))
-                Text("Reason: ${reservation.rejectionReason}", color = Color(0xFFC0392B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            
+            AnimatedVisibility(visible = isExpanded) {
+                Column(modifier = Modifier.padding(top = 16.dp)) {
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                    Spacer(Modifier.height(16.dp))
+                    
+                    DetailRow("Contact No.", reservation.contact)
+                    DetailRow("Time Slot", reservation.time)
+                    DetailRow("Date", reservation.date)
+                    DetailRow("Purpose", reservation.purpose)
+                    
+                    if (reservation.status == ReservationStatus.REJECTED && !reservation.rejectionReason.isNullOrEmpty()) {
+                        DetailRow("Reason", reservation.rejectionReason, Color(0xFFC0392B))
+                    }
+                    
+                    if (reservation.paymentProofUri != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Payment Proof", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MediumGray)
+                        Spacer(Modifier.height(8.dp))
+                        AsyncImage(
+                            model = reservation.paymentProofUri,
+                            contentDescription = "Payment Proof",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Total Cost", fontWeight = FontWeight.Bold, color = DeepNavy)
+                        Text("₱${String.format("%.2f", reservation.cost)}", fontWeight = FontWeight.Bold, color = DeepNavy)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+fun DetailRow(label: String, value: String, valueColor: Color = DeepNavy) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, fontSize = 12.sp, color = MediumGray, fontWeight = FontWeight.Medium)
+        Text(text = value, fontSize = 12.sp, color = valueColor, fontWeight = FontWeight.Bold)
     }
 }
 
